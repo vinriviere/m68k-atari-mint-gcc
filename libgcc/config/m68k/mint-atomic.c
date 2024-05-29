@@ -43,7 +43,7 @@ typedef unsigned int uint32_t __attribute__ ((mode (SI)));
 
 /* Kernel helper for compare-and-exchange a 32-bit value.  */
 static inline uint32_t
-__kernel_cmpxchg (uint32_t *mem, uint32_t oldval, uint32_t newval)
+__kernel_cmpxchg (volatile uint32_t *mem, uint32_t oldval, uint32_t newval)
 {
 #ifdef __linux__
   register uint32_t *a0 asm("a0") = mem;
@@ -80,22 +80,23 @@ __kernel_cmpxchg (uint32_t *mem, uint32_t oldval, uint32_t newval)
 
 #define WORD_SYNC_OP(OP, PFX_OP, INF_OP, RETURN)			\
   uint32_t HIDDEN							\
-  NAME##_##RETURN (OP, 4) (uint32_t *ptr, uint32_t val)			\
+  NAME##_##RETURN (OP, 4) (volatile void *ptr, uint32_t val)			\
   {									\
-    uint32_t oldval, newval, cmpval = *ptr;				\
+    volatile uint32_t *uptr = (volatile uint32_t *)ptr; \
+    uint32_t oldval, newval, cmpval = *uptr;				\
 									\
     do {								\
       oldval = cmpval;							\
       newval = PFX_OP (oldval INF_OP val);				\
-      cmpval = __kernel_cmpxchg (ptr, oldval, newval);			\
+      cmpval = __kernel_cmpxchg (uptr, oldval, newval);			\
     } while (__builtin_expect (oldval != cmpval, 0));			\
 									\
     return RETURN;							\
   }
 
-#define SUBWORD_SYNC_OP(OP, PFX_OP, INF_OP, TYPE, WIDTH, RETURN)	\
-  TYPE HIDDEN								\
-  NAME##_##RETURN (OP, WIDTH) (TYPE *ptr, TYPE sval)			\
+#define SUBWORD_SYNC_OP(OP, PFX_OP, INF_OP, TYPE, RTYPE, WIDTH, RETURN)	\
+  RTYPE HIDDEN								\
+  NAME##_##RETURN (OP, WIDTH) (volatile void *ptr, TYPE sval)			\
   {									\
     uint32_t *wordptr = (uint32_t *) ((unsigned long) ptr & ~3);	\
     uint32_t mask, shift, oldval, newval, cmpval, wval;		\
@@ -122,19 +123,25 @@ WORD_SYNC_OP (and,   , &, oldval)
 WORD_SYNC_OP (xor,   , ^, oldval)
 WORD_SYNC_OP (nand, ~, &, oldval)
 
-SUBWORD_SYNC_OP (add,   , +, unsigned short, 2, oldval)
-SUBWORD_SYNC_OP (sub,   , -, unsigned short, 2, oldval)
-SUBWORD_SYNC_OP (or,    , |, unsigned short, 2, oldval)
-SUBWORD_SYNC_OP (and,   , &, unsigned short, 2, oldval)
-SUBWORD_SYNC_OP (xor,   , ^, unsigned short, 2, oldval)
-SUBWORD_SYNC_OP (nand, ~, &, unsigned short, 2, oldval)
+#ifdef __MSHORT__
+#define SHORTINT unsigned int
+#else
+#define SHORTINT unsigned short
+#endif
 
-SUBWORD_SYNC_OP (add,   , +, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (sub,   , -, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (or,    , |, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (and,   , &, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (xor,   , ^, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (nand, ~, &, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (add,   , +, SHORTINT, SHORTINT, 2, oldval)
+SUBWORD_SYNC_OP (sub,   , -, SHORTINT, SHORTINT, 2, oldval)
+SUBWORD_SYNC_OP (or,    , |, SHORTINT, SHORTINT, 2, oldval)
+SUBWORD_SYNC_OP (and,   , &, SHORTINT, SHORTINT, 2, oldval)
+SUBWORD_SYNC_OP (xor,   , ^, SHORTINT, SHORTINT, 2, oldval)
+SUBWORD_SYNC_OP (nand, ~, &, SHORTINT, SHORTINT, 2, oldval)
+
+SUBWORD_SYNC_OP (add,   , +, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (sub,   , -, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (or,    , |, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (and,   , &, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (xor,   , ^, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (nand, ~, &, unsigned char, unsigned char, 1, oldval)
 
 WORD_SYNC_OP (add,   , +, newval)
 WORD_SYNC_OP (sub,   , -, newval)
@@ -143,36 +150,36 @@ WORD_SYNC_OP (and,   , &, newval)
 WORD_SYNC_OP (xor,   , ^, newval)
 WORD_SYNC_OP (nand, ~, &, newval)
 
-SUBWORD_SYNC_OP (add,   , +, unsigned short, 2, newval)
-SUBWORD_SYNC_OP (sub,   , -, unsigned short, 2, newval)
-SUBWORD_SYNC_OP (or,    , |, unsigned short, 2, newval)
-SUBWORD_SYNC_OP (and,   , &, unsigned short, 2, newval)
-SUBWORD_SYNC_OP (xor,   , ^, unsigned short, 2, newval)
-SUBWORD_SYNC_OP (nand, ~, &, unsigned short, 2, newval)
+SUBWORD_SYNC_OP (add,   , +, SHORTINT, SHORTINT, 2, newval)
+SUBWORD_SYNC_OP (sub,   , -, SHORTINT, SHORTINT, 2, newval)
+SUBWORD_SYNC_OP (or,    , |, SHORTINT, SHORTINT, 2, newval)
+SUBWORD_SYNC_OP (and,   , &, SHORTINT, SHORTINT, 2, newval)
+SUBWORD_SYNC_OP (xor,   , ^, SHORTINT, SHORTINT, 2, newval)
+SUBWORD_SYNC_OP (nand, ~, &, SHORTINT, SHORTINT, 2, newval)
 
-SUBWORD_SYNC_OP (add,   , +, unsigned char, 1, newval)
-SUBWORD_SYNC_OP (sub,   , -, unsigned char, 1, newval)
-SUBWORD_SYNC_OP (or,    , |, unsigned char, 1, newval)
-SUBWORD_SYNC_OP (and,   , &, unsigned char, 1, newval)
-SUBWORD_SYNC_OP (xor,   , ^, unsigned char, 1, newval)
-SUBWORD_SYNC_OP (nand, ~, &, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (add,   , +, unsigned char, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (sub,   , -, unsigned char, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (or,    , |, unsigned char, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (and,   , &, unsigned char, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (xor,   , ^, unsigned char, unsigned char, 1, newval)
+SUBWORD_SYNC_OP (nand, ~, &, unsigned char, unsigned char, 1, newval)
 
 uint32_t HIDDEN
-__sync_val_compare_and_swap_4 (uint32_t *ptr, uint32_t oldval, uint32_t newval)
+__sync_val_compare_and_swap_4 (volatile void *ptr, uint32_t oldval, uint32_t newval)
 {
-  return __kernel_cmpxchg (ptr, oldval, newval);
+  return __kernel_cmpxchg ((volatile uint32_t *) ptr, oldval, newval);
 }
 
 bool HIDDEN
-__sync_bool_compare_and_swap_4 (uint32_t *ptr, uint32_t oldval,
+__sync_bool_compare_and_swap_4 (volatile void *ptr, uint32_t oldval,
 				uint32_t newval)
 {
-  return __kernel_cmpxchg (ptr, oldval, newval) == oldval;
+  return __kernel_cmpxchg ((volatile uint32_t *) ptr, oldval, newval) == oldval;
 }
 
 #define SUBWORD_VAL_CAS(TYPE, WIDTH)					\
   TYPE HIDDEN								\
-  __sync_val_compare_and_swap_##WIDTH (TYPE *ptr, TYPE soldval,		\
+  __sync_val_compare_and_swap_##WIDTH (volatile void *ptr, TYPE soldval,		\
 				       TYPE snewval)			\
   {									\
     uint32_t *wordptr = (uint32_t *)((unsigned long) ptr & ~3);		\
@@ -196,19 +203,19 @@ __sync_bool_compare_and_swap_4 (uint32_t *ptr, uint32_t oldval,
     return (oldval >> shift) & MASK_##WIDTH;				\
   }
 
-SUBWORD_VAL_CAS (unsigned short, 2)
+SUBWORD_VAL_CAS (SHORTINT, 2)
 SUBWORD_VAL_CAS (unsigned char,  1)
 
 #define SUBWORD_BOOL_CAS(TYPE, WIDTH)					\
   bool HIDDEN								\
-  __sync_bool_compare_and_swap_##WIDTH (TYPE *ptr, TYPE oldval,		\
+  __sync_bool_compare_and_swap_##WIDTH (volatile void *ptr, TYPE oldval,		\
 					TYPE newval)			\
   {									\
     return (__sync_val_compare_and_swap_##WIDTH (ptr, oldval, newval)	\
 	    == oldval);							\
   }
 
-SUBWORD_BOOL_CAS (unsigned short, 2)
+SUBWORD_BOOL_CAS (SHORTINT, 2)
 SUBWORD_BOOL_CAS (unsigned char,  1)
 
 #undef NAME_oldval
@@ -218,5 +225,5 @@ SUBWORD_BOOL_CAS (unsigned char,  1)
 #pragma GCC diagnostic ignored "-Wunused-value"
 
 WORD_SYNC_OP (test_and_set, , COMMA, oldval)
-SUBWORD_SYNC_OP (test_and_set, , COMMA, unsigned char, 1, oldval)
-SUBWORD_SYNC_OP (test_and_set, , COMMA, unsigned short, 2, oldval)
+SUBWORD_SYNC_OP (test_and_set, , COMMA, unsigned char, unsigned char, 1, oldval)
+SUBWORD_SYNC_OP (test_and_set, , COMMA, SHORTINT, SHORTINT, 2, oldval)
